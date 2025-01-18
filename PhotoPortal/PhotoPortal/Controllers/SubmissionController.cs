@@ -22,7 +22,7 @@ public class SubmissionController(
 
     [HttpGet("/i/{token}/{fileName}")]
     [ResponseCache(Duration = 1800)]
-    public IActionResult Image(string token, string fileName)
+    public IActionResult Image(string token, string fileName, string originalName)
     {
         if (token != config["Token"])
         {
@@ -38,7 +38,11 @@ public class SubmissionController(
             contentType = "application/octet-stream";
         }
 
-        return PhysicalFile(fullPath, contentType);
+        if (string.IsNullOrEmpty(originalName))
+        {
+            originalName = Path.GetFileName(fileName);
+        }
+        return PhysicalFile(fullPath, contentType, originalName);
     }
 
     [HttpPost("/Submit")]
@@ -64,7 +68,7 @@ public class SubmissionController(
         var basePath = config["FileStorage"];
         Directory.CreateDirectory(basePath);
 
-        var storedFileNames = new List<string>();
+        var storedFileNames = new List<(string original, string stored)>();
 
         var sanitizedFrom = Regex.Replace(dto.From, "[^a-zA-Z0-9]+", "_");
         var metaPath = Path.Combine(basePath, $"{dto.Submitted:yyyyMMddHHmmss}_{sanitizedFrom}.txt");
@@ -89,7 +93,7 @@ public class SubmissionController(
             var contents = Convert.FromBase64String(file.Base64);
             await System.IO.File.WriteAllBytesAsync(filePath, contents);
 
-            storedFileNames.Add(fileName);
+            storedFileNames.Add((file.OriginalName, fileName));
 
             try
             {
@@ -140,7 +144,7 @@ public class SubmissionController(
         result.EnsureSuccessStatusCode();
     }
 
-    private async Task EmailResponses(Submission.WithFiles dto, string basePath, List<string> storedFileNames)
+    private async Task EmailResponses(Submission.WithFiles dto, string basePath, List<(string original, string stored)> storedFileNames)
     {
         await email.SendEmailAsync(
             dto.EmailAddress,
@@ -153,10 +157,19 @@ public class SubmissionController(
                     {HttpUtility.HtmlEncode(dto.Message).Replace("\n", "<br />")}
                 </p>
                 {(storedFileNames.Count > 0 ? $"<p>Your {(storedFileNames.Count > 1 ? $"{storedFileNames.Count} photos are" : "photo is")} below!</p>" : "")}
+                <p>You can view everybody's photos and upload more: <a href='{config["Gallery"]}'>View Gallery</a></p>
                 <p>&mdash;<br />The Solies</p>
 
                 <p>{string.Join("</p><p>", storedFileNames
-                        .Select((it) => $"<img src='{basePath.TrimEnd('/')}/{it}' style='max-width: 500px;' />")
+                        .Select((it) =>
+                        {
+                            var imagePath = $"{basePath.TrimEnd('/')}/{it.stored}?originalName={HttpUtility.UrlEncode(it.original)}";
+                            return
+                                $@"
+                                <img src='{imagePath}' style='max-width: 500px;' />
+                                <p><a href='{imagePath}'>Download</a><br /></p>
+                                ";
+                        })
                     )}</p>
             </div>
             ");
