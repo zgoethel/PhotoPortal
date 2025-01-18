@@ -48,19 +48,41 @@
         <label for="name">Enter your name:<i class="text-danger">*</i></label>
         <input type="text" maxlength="150"
             class="form-control border border-dark shadow-sm"
+            id="name" name="name"
             @bind="@dto.From" @bind:event="oninput" />
     </div>
 
     <div class="d-block">
-        <label for="name">Leave a note <i>(optional)</i>:</label>
+        <label for="message">Leave a note <i>(optional)</i>:</label>
         <textarea rows="4" maxlength="10000"
             placeholder="Congratulations!"
             class="form-control border border-dark shadow-sm"
-            
+            id="message" name="message"
             @bind="@dto.Message">
 
         </textarea>
     </div>
+
+    <div class="d-flex flex-row gap-1 align-itmes-center">
+        <input type="checkbox" id="emailMe" name="emailMe" @bind="@dto.EmailMe" />
+        <label for="emailMe">Email me my photos and notes</label>
+    </div>
+
+    @if (dto.EmailMe)
+    {
+
+        <div class="d-block">
+            <label for="email">Email:<i class="text-danger">*</i></label>
+            <input type="text" maxlength="150"
+                class="form-control border border-dark shadow-sm"
+                id="email" name="email"
+                @bind="@dto.EmailAddress" @bind:event="oninput" />
+        </div>
+
+    } else
+    {
+        dto.EmailAddress = "";
+    }
 
 </div>
 
@@ -125,7 +147,7 @@
 <button class="btn btn-primary mb-3 p-3 w-100"
     style="background: #57b6c1;border: 1px solid #990039;"
     type="button"
-    disabled="@(string.IsNullOrEmpty(dto.From))"
+    disabled="@SendDisabled"
     @onclick="@SubmitForm">
 
     Send
@@ -151,6 +173,10 @@
     private bool loading = true;
     private Submission.WithFiles dto = new();
     private IBrowserFile[] files = [null, null, null, null, null];
+
+    private bool SendDisabled => string.IsNullOrEmpty(dto.From)
+        || (dto.EmailMe && string.IsNullOrEmpty(dto.EmailAddress))
+        || (dto.EmailMe && !System.Net.Mail.MailAddress.TryCreate(dto.EmailAddress, out _));
 
     protected override async Task OnInitializedAsync()
     {

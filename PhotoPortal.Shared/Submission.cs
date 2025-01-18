@@ -10,6 +10,10 @@ public partial class Submission
 
     public int NumAttachments { get; set; }
 
+    public bool EmailMe { get; set; }
+
+    public string EmailAddress { get; set; }
+
     public partial class FileBase64
     {
         public string OriginalName { get; set; }

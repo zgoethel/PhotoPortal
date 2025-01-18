@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\PhotoPortal.Shared\PhotoPortal.Shared.csproj" />
     <ProjectReference Include="..\PhotoPortal.Client\PhotoPortal.Client.csproj" />
+    <PackageReference Include="MailKit" Version="4.9.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.8" />
   </ItemGroup>
 

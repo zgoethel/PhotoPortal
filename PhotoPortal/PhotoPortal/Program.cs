@@ -1,4 +1,5 @@
 using PhotoPortal.Components;
+using PhotoPortal.Services;
 
 namespace PhotoPortal
 {
@@ -14,6 +15,7 @@ namespace PhotoPortal
 
             builder.Services.AddControllers();
             builder.Services.AddAuthorization();
+            builder.Services.AddHttpContextAccessor();
 
             builder.Services.AddAuthentication()
                 .AddCookie((options) =>
@@ -27,7 +29,7 @@ namespace PhotoPortal
                     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 });
 
-            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddSingleton<EmailSender>();
 
             var app = builder.Build();
 

@@ -1,98 +1,164 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
+using PhotoPortal.Services;
 using PhotoPortal.Shared;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Web;
 
-namespace PhotoPortal.Controllers
+namespace PhotoPortal.Controllers;
+
+public class SubmissionController(
+    IConfiguration config,
+    EmailSender email
+    ) : Controller
 {
-    public class SubmissionController(
-        IConfiguration config
-        ) : Controller
+    private readonly JsonSerializerOptions jsonOptions = new()
     {
-        private readonly JsonSerializerOptions jsonOptions = new()
-        {
-            WriteIndented = true
-        };
+        WriteIndented = true
+    };
 
-        [HttpPost("/Submit")]
-        [RequestSizeLimit(1_000_000_000)]
-        public async Task<IActionResult> Submit([FromBody] Submission.WithFiles dto, [FromQuery] string token)
+    [HttpGet("/i/{token}/{fileName}")]
+    [ResponseCache(Duration = 1800)]
+    public IActionResult Image(string token, string fileName)
+    {
+        if (token != config["Token"])
         {
-            if (token != config["Token"])
+            return Forbid();
+        }
+
+        var basePath = config["FileStorage"];
+        var fullPath = Path.GetFullPath(Path.Combine(basePath, Path.GetFileName(fileName)));
+
+        var knownType = new FileExtensionContentTypeProvider().TryGetContentType(fileName, out var contentType);
+        if (!knownType)
+        {
+            contentType = "application/octet-stream";
+        }
+
+        return PhysicalFile(fullPath, contentType);
+    }
+
+    [HttpPost("/Submit")]
+    [RequestSizeLimit(1_000_000_000)]
+    public async Task<IActionResult> Submit([FromBody] Submission.WithFiles dto, [FromQuery] string token)
+    {
+        if (token != config["Token"])
+        {
+            return Forbid();
+        }
+
+        if (string.IsNullOrEmpty(dto.From)
+            || dto.From.Length > 150
+            || dto.Message.Length > 10000
+            || dto.NumAttachments != dto.FileContents.Count
+            || dto.NumAttachments > 5)
+        {
+            return BadRequest();
+        }
+
+        dto.Submitted = DateTime.UtcNow;
+
+        var basePath = config["FileStorage"];
+        Directory.CreateDirectory(basePath);
+
+        var storedFileNames = new List<string>();
+
+        var sanitizedFrom = Regex.Replace(dto.From, "[^a-zA-Z0-9]+", "_");
+        var metaPath = Path.Combine(basePath, $"{dto.Submitted:yyyyMMddHHmmss}_{sanitizedFrom}.txt");
+
+        var meta = JsonSerializer.Serialize<Submission>(dto, jsonOptions);
+        await System.IO.File.WriteAllTextAsync(metaPath, meta);
+
+        foreach (var (file, i) in dto.FileContents.Select((it, i) => (it, i)))
+        {
+            var name = Path.GetFileNameWithoutExtension(file.OriginalName);
+            var sanitizedName = Regex.Replace(name, "[^a-zA-Z0-9]+", "_");
+            if (sanitizedName.Length > 10)
             {
-                return Forbid();
+                sanitizedName = sanitizedName[..10];
             }
 
-            if (string.IsNullOrEmpty(dto.From)
-                || dto.From.Length > 150
-                || dto.Message.Length > 10000
-                || dto.NumAttachments != dto.FileContents.Count
-                || dto.NumAttachments > 5)
+            var extension = Path.GetExtension(file.OriginalName);
+
+            var fileName = $"{dto.Submitted:yyyyMMddHHmmss}_{sanitizedFrom}_{i}_{sanitizedName}.{extension}";
+            var filePath = Path.Combine(basePath, fileName);
+
+            var contents = Convert.FromBase64String(file.Base64);
+            await System.IO.File.WriteAllBytesAsync(filePath, contents);
+
+            storedFileNames.Add(fileName);
+
+            try
             {
-                return BadRequest();
+                await UploadToOwnCloud(fileName, contents);
+            } catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
             }
+        }
 
-            dto.Submitted = DateTime.UtcNow;
-
-            var basePath = config["FileStorage"];
-            Directory.CreateDirectory(basePath);
-
-            var sanitizedFrom = Regex.Replace(dto.From, "[^a-zA-Z0-9]+", "_");
-            var metaPath = Path.Combine(basePath, $"{DateTime.Now:yyyyMMddHHmmss}_{sanitizedFrom}.txt");
-
-            var meta = JsonSerializer.Serialize<Submission>(dto, jsonOptions);
-            await System.IO.File.WriteAllTextAsync(metaPath, meta);
-
-            foreach (var (file, i) in dto.FileContents.Select((it, i) => (it, i)))
+        if (dto.EmailMe)
+        {
+            _ = Task.Run(async () =>
             {
-                var name = Path.GetFileNameWithoutExtension(file.OriginalName);
-                var sanitizedName = Regex.Replace(name, "[^a-zA-Z0-9]+", "_");
-                if (sanitizedName.Length > 10)
-                {
-                    sanitizedName = sanitizedName[..10];
-                }
-
-                var extension = Path.GetExtension(file.OriginalName);
-
-                var fileName = $"{DateTime.Now:yyyyMMddHHmmss}_{sanitizedFrom}_{i}_{sanitizedName}.{extension}";
-                var filePath = Path.Combine(basePath, fileName);
-
-                var contents = Convert.FromBase64String(file.Base64);
-                await System.IO.File.WriteAllBytesAsync(filePath, contents);
-
                 try
                 {
-                    // http://example.com/owncloud/remote.php/webdav/
-
-                    using var http = new HttpClient();
-                    http.BaseAddress = new(config["OwnCloud"]);
-
-                    var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(config["OwnCloudCreds"]));
-                    http.DefaultRequestHeaders.Authorization = new("Basic", credentials);
-
-                    var knownType = new FileExtensionContentTypeProvider().TryGetContentType(file.OriginalName, out var contentType);
-                    if (!knownType)
-                    {
-                        contentType = "application/octet-stream";
-                    }
-
-                    using var content = new ByteArrayContent(contents);
-                    content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-
-                    var putPath = $"./remote.php/webdav/{config["OwnCloudPath"].Trim('/', '\\')}/{fileName}";
-                    var result = await http.PutAsync(putPath, content);
-
-                    result.EnsureSuccessStatusCode();
+                    await EmailResponses(dto, $"{Request.Scheme}://{Request.Host}/{Request.PathBase.Value?.TrimStart('/')}".TrimEnd('/') + $"/i/{token}", storedFileNames);
                 } catch (Exception ex)
                 {
                     Console.WriteLine(ex.ToString());
                 }
-            }
-
-            return Ok();
+            });
         }
+
+        return Ok();
+    }
+
+    private async Task UploadToOwnCloud(string fileName, byte[] contents)
+    {
+        using var http = new HttpClient();
+        http.BaseAddress = new(config["OwnCloud"]);
+
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(config["OwnCloudCreds"]));
+        http.DefaultRequestHeaders.Authorization = new("Basic", credentials);
+
+        var knownType = new FileExtensionContentTypeProvider().TryGetContentType(fileName, out var contentType);
+        if (!knownType)
+        {
+            contentType = "application/octet-stream";
+        }
+
+        using var content = new ByteArrayContent(contents);
+        content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+
+        var putPath = $"./remote.php/webdav/{config["OwnCloudPath"].Trim('/', '\\')}/{fileName}";
+        var result = await http.PutAsync(putPath, content);
+
+        result.EnsureSuccessStatusCode();
+    }
+
+    private async Task EmailResponses(Submission.WithFiles dto, string basePath, List<string> storedFileNames)
+    {
+        await email.SendEmailAsync(
+            dto.EmailAddress,
+            "Your photos. Thanks for coming!",
+            $@"
+            <div>
+                <p><strong>Name:</strong> {HttpUtility.HtmlEncode(dto.From)}
+                <p>
+                    <strong>Message:</strong><br />
+                    {HttpUtility.HtmlEncode(dto.Message).Replace("\n", "<br />")}
+                </p>
+                {(storedFileNames.Count > 0 ? $"<p>Your {(storedFileNames.Count > 1 ? $"{storedFileNames.Count} photos are" : "photo is")} below!</p>" : "")}
+                <p>&mdash;<br />The Solies</p>
+
+                <p>{string.Join("</p><p>", storedFileNames
+                        .Select((it) => $"<img src='{basePath.TrimEnd('/')}/{it}' style='max-width: 500px;' />")
+                    )}</p>
+            </div>
+            ");
     }
 }
