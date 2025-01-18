@@ -2,11 +2,9 @@
 using Microsoft.AspNetCore.StaticFiles;
 using PhotoPortal.Shared;
 using System.Net.Http.Headers;
-using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace PhotoPortal.Controllers
 {
@@ -81,10 +79,8 @@ namespace PhotoPortal.Controllers
                         contentType = "application/octet-stream";
                     }
 
-                    using var multipartContent = new MultipartFormDataContent();
                     using var content = new ByteArrayContent(contents);
                     content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-                    multipartContent.Add(content, "myfile", file.OriginalName);
 
                     var putPath = $"./remote.php/webdav/{config["OwnCloudPath"].Trim('/', '\\')}/{fileName}";
                     var result = await http.PutAsync(putPath, content);

@@ -70,6 +70,13 @@
 {
     var fileStyle = i == dto.NumAttachments ? "" : "display: none !important;";
 
+    @*
+        I thought if I kept the `InputFile` in the DOM even when it's hidden,
+        Blazor would keep the IBrowserFile alive and I could copy all uploaded
+        streams at time of submission.
+        Unfortunately, the file handles were disposed anyway. So now I just copy
+        the stream into memory at the time the file is selected.
+    *@
     <div class="d-flex flex-row gap-2 mb-3" style="@fileStyle">
 
         <label for="fileInput" class="btn btn-outline-secondary flex-grow-1 flex-shrink-1">
@@ -100,7 +107,7 @@
 
             <InputFile name="cameraInput" id="cameraInput"
                 class="d-none" 
-                type="file" accept="image/*" capture="user"
+                type="file" accept="image/*" capture
                 OnChange="@HandleFileUpload" />
 
         }
