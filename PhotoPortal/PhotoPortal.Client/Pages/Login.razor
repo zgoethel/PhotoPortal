@@ -1,0 +1,115 @@
+﻿@page "/Login"
+
+@using PhotoPortal.Client.Services
+@inject IEnumerable<HttpClient> _http
+@inject IJSRuntime js
+@inject AuthService auth
+
+@code {
+    private HttpClient http => _http.FirstOrDefault();
+}
+
+<PageTitle>Login</PageTitle>
+
+@if (loading)
+{
+    <div class="d-flex"
+        style="position: fixed;left: 0;top: 0;
+               width: 100vw;height: 100vh;
+               z-index: 9999;background: #69696969;">
+        <div class="d-flex m-auto bg-white shadow rounded p-3">
+
+            <div class="spinner-border mb-0" role="status">
+            </div>
+
+        </div>
+    </div>
+}
+
+<div class="d-flex flex-column align-items-center mb-4">
+
+    <h3 style="font-family: 'Croissant One', cursive;
+               color: #990039;">
+        get ready for
+    </h3>
+
+    <h2 style="font-family: 'Times New Roman', Times, serif;
+               font-size: 36pt;">
+        A NEW SOLIE!
+    </h2>
+
+</div>
+
+@if (!loading)
+{
+
+    <div class="d-flex flex-column gap-3 p-3 shadow mb-3"
+         style="background: #ffffffc0;
+                border-top: 3px double #990039;">
+
+        <p>Enter the passphrase to continue.</p>
+
+        <div class="d-block">
+            <label for="password">Passphrase:<i class="text-danger">*</i></label>
+            <input type="password"
+                class="form-control border border-dark shadow-sm"
+                id="password" name="password"
+                @bind="@password" @bind:event="oninput" />
+        </div>
+
+    </div>
+
+    <button class="btn btn-primary mb-3 p-3 w-100"
+        style="background: #57b6c1;border: 1px solid #990039;"
+        type="button"
+        disabled="@string.IsNullOrEmpty(password)"
+        @onclick="@SubmitForm">
+
+        Log in
+
+    </button>
+
+}
+
+@code {
+    //TODO ReturnUrl
+
+    private bool loading = true;
+    private string password = "";
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+
+        if (firstRender)
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitForm()
+    {
+        loading = true;
+        await InvokeAsync(StateHasChanged);
+
+        await Task.Delay(100);
+
+        var response = await http.PostAsync($"./Login/Submit?password={System.Web.HttpUtility.UrlEncode(password)}", null);
+        try
+        {
+            response.EnsureSuccessStatusCode();
+
+            //auth.Reload();
+            await js.InvokeVoidAsync("location.reload");
+        } catch (Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+            await js.InvokeVoidAsync("alert", "Login failed; try again");
+        } finally
+        {
+            loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

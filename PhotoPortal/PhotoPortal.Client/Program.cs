@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using PhotoPortal.Client.Services;
 
 namespace PhotoPortal.Client
 {
@@ -12,6 +14,11 @@ namespace PhotoPortal.Client
             {
                 BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
             });
+
+            builder.Services.AddAuthorizationCore();
+
+            builder.Services.AddTransient<AuthenticationStateProvider, AuthService>();
+            builder.Services.AddTransient((sp) => sp.GetRequiredService<AuthenticationStateProvider>() as AuthService);
 
             await builder.Build().RunAsync();
         }

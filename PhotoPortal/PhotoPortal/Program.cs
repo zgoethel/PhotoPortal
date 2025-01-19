@@ -1,3 +1,7 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using PhotoPortal.Client.Services;
 using PhotoPortal.Components;
 using PhotoPortal.Services;
 
@@ -17,11 +21,15 @@ namespace PhotoPortal
             builder.Services.AddAuthorization();
             builder.Services.AddHttpContextAccessor();
 
-            builder.Services.AddAuthentication()
+            builder.Services
+                .AddAuthentication((options) =>
+                {
+                    options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                })
                 .AddCookie((options) =>
                 {
-                    options.LoginPath = "/Login";
-                    options.AccessDeniedPath = "/Login";
+                    options.LoginPath = "/Login"; //TODO Fix http://
+                    options.AccessDeniedPath = "/Login"; //TODO Fix http://
                     options.Cookie.Name = "PhotoPortal.Id";
                     options.Cookie.IsEssential = true;
                     options.Cookie.SameSite = SameSiteMode.None;
@@ -29,7 +37,16 @@ namespace PhotoPortal
                     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 });
 
+            builder.Services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                options.KnownNetworks.Clear();
+                options.KnownProxies.Clear();
+            });
+
             builder.Services.AddSingleton<EmailSender>();
+            builder.Services.AddTransient<AuthenticationStateProvider, AuthService>();
+            builder.Services.AddTransient((sp) => sp.GetRequiredService<AuthenticationStateProvider>() as AuthService);
 
             var app = builder.Build();
 
@@ -54,6 +71,7 @@ namespace PhotoPortal
                 .AddAdditionalAssemblies(typeof(Client._Imports).Assembly);
 
             app.MapControllers();
+            app.UseForwardedHeaders();
 
             app.Run();
         }

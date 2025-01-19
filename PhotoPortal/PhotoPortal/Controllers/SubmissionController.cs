@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
 using PhotoPortal.Services;
 using PhotoPortal.Shared;
@@ -20,6 +21,7 @@ public class SubmissionController(
         WriteIndented = true
     };
 
+    [AllowAnonymous]
     [HttpGet("/i/{token}/{fileName}")]
     [ResponseCache(Duration = 1800)]
     public IActionResult Image(string token, string fileName, string originalName)
@@ -45,6 +47,7 @@ public class SubmissionController(
         return PhysicalFile(fullPath, contentType, originalName);
     }
 
+    [AllowAnonymous]
     [HttpPost("/Submit")]
     [RequestSizeLimit(1_000_000_000)]
     public async Task<IActionResult> Submit([FromBody] Submission.WithFiles dto, [FromQuery] string token)
@@ -87,7 +90,7 @@ public class SubmissionController(
 
             var extension = Path.GetExtension(file.OriginalName);
 
-            var fileName = $"{dto.Submitted:yyyyMMddHHmmss}_{sanitizedFrom}_{i}_{sanitizedName}.{extension}";
+            var fileName = $"{dto.Submitted:yyyyMMddHHmmss}_{sanitizedFrom}_{i}_{sanitizedName}{extension}";
             var filePath = Path.Combine(basePath, fileName);
 
             var contents = Convert.FromBase64String(file.Base64);
