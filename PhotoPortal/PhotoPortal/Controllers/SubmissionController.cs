@@ -177,4 +177,65 @@ public class SubmissionController(
             </div>
             ");
     }
+
+    [Authorize]
+    [HttpGet("/Submission/ListResponses")]
+    public async Task<IActionResult> ListResponses(bool? read)
+    {
+        var basePath = config["FileStorage"];
+        var submissionFiles = Directory.EnumerateFiles(basePath, $"*.txt", SearchOption.TopDirectoryOnly);
+
+        var responses = new List<Submission.AdminView>();
+
+        foreach (var file in submissionFiles)
+        {
+            var fileBase = Path.GetFileNameWithoutExtension(file);
+            var isRead = System.IO.File.Exists($"{fileBase}.read");
+            if (read.HasValue && read.Value != isRead)
+            {
+                continue;
+            }
+
+            var metaJson = await System.IO.File.ReadAllTextAsync(file);
+            var meta = JsonSerializer.Deserialize<Submission.AdminView>(metaJson);
+
+            meta.FileBase = fileBase;
+            meta.Read = isRead ? new FileInfo($"{fileBase}.read").CreationTimeUtc : null;
+            meta.ImagePaths = [];
+
+            var imageFiles = Directory.EnumerateFiles(basePath, $"{fileBase}_*_*.*");
+            foreach (var image in imageFiles)
+            {
+                meta.ImagePaths.Add($"i/{config["Token"]}/{Path.GetFileName(image)}");
+            }
+
+            responses.Add(meta);
+        }
+
+        return Json(responses.OrderByDescending((it) => it.Submitted));
+    }
+
+    [Authorize]
+    [HttpPost("/Submission/MarkRead")]
+    public IActionResult MarkRead(string fileBase)
+    {
+        var basePath = config["FileStorage"];
+        var fullPath = Path.Combine(basePath, $"{fileBase}.txt");
+
+        if (System.IO.File.Exists(fullPath))
+        {
+            var readPath = Path.Combine(basePath, $"{fileBase}.read");
+            if (!System.IO.File.Exists(readPath))
+            {
+                try
+                {
+                    System.IO.File.WriteAllText(readPath, "");
+                } catch (Exception)
+                {
+                }
+            }
+        }
+
+        return Ok();
+    }
 }

@@ -62,6 +62,7 @@ namespace PhotoPortal
             }
 
             app.UseHttpsRedirection();
+            app.UseForwardedHeaders();
 
             app.UseStaticFiles();
             app.UseAntiforgery();
@@ -71,7 +72,6 @@ namespace PhotoPortal
                 .AddAdditionalAssemblies(typeof(Client._Imports).Assembly);
 
             app.MapControllers();
-            app.UseForwardedHeaders();
 
             app.Run();
         }

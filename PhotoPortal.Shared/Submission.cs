@@ -24,4 +24,13 @@ public partial class Submission
     {
         public List<FileBase64> FileContents { get; set; } = [];
     }
+
+    public partial class AdminView : Submission
+    {
+        public string FileBase { get; set; }
+
+        public List<string> ImagePaths { get; set; } = [];
+
+        public DateTime? Read { get; set; }
+    }
 }

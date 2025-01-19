@@ -1,6 +1,13 @@
 ﻿@page "/"
 
 @using Microsoft.AspNetCore.Components.Authorization
+@using PhotoPortal.Shared
+@inject IEnumerable<HttpClient> _http
+@inject IJSRuntime js
+
+@code {
+    private HttpClient http => _http.FirstOrDefault();
+}
 
 <PageTitle>Home</PageTitle>
 
@@ -25,7 +32,22 @@
              style="background: #ffffffc0;
                     border-top: 3px double #990039;">
 
+            @foreach (var response in responses)
+            {
+                <h4><strong>From:</strong> @response.From</h4>
+                <p><strong>Submitted:</strong> @response.Submitted.ToLocalTime().ToShortDateString() @response.Submitted.ToLocalTime().ToShortTimeString()</p>
+                
+                <p>@((MarkupString)System.Web.HttpUtility.HtmlEncode(response.Message).Replace("\n", "<br />"))</p>
 
+                <div class="d-flex flex-row gap-2 flex-wrap align-items-center justify-items-center mb-4">
+
+                    @foreach (var image in response.ImagePaths)
+                    {
+                        <img class="mb-2" style="max-width: 45vw;" src="@image" />
+                    }
+
+                </div>
+            }
 
         </div>
 
@@ -36,3 +58,37 @@
 
     </NotAuthorized>
 </AuthorizeView>
+
+@code {
+    [CascadingParameter]
+    public Task<AuthenticationState> AuthState { get; set; }
+
+    private List<Submission.AdminView> responses = [];
+    private bool dataLoaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if ((await AuthState)?.User?.Identity?.IsAuthenticated == true
+            && !dataLoaded)
+        {
+            dataLoaded = true;
+
+            var response = await http.GetAsync($"./Submission/ListResponses?read=");
+            try
+            {
+                response.EnsureSuccessStatusCode();
+
+                responses = await response.Content.ReadFromJsonAsync<List<Submission.AdminView>>();
+            } catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+                await js.InvokeVoidAsync("alert", $"Failed to submit the form: '{ex.Message}'");
+            } finally
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+}
